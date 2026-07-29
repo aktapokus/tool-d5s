@@ -1,0 +1,11 @@
+{
+  "id": "d5s",
+  "name": "Digital 5S",
+  "namespace": "core",
+  "version": "0.1.0",
+  "faz": 1,
+  "aktif": true,
+  "description": "5S metodolojisiyle kapsamlı dosya sistemi analizi ve organizasyonu",
+  "module": "tools.d5s",
+  "ui_entry": "panel.js"
+}
