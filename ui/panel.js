@@ -10,15 +10,19 @@
 
 const STYLE_ID = 'd5s-panel-style';
 
+// ── İkonlar — monokrom SVG, emoji/renkli glyph yok (platform standardı). ──
+const ICON_UNDO = "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' style='vertical-align:-2px'><path d='M9 14 4 9l5-5'/><path d='M4 9h10a6 6 0 0 1 0 12h-1'/></svg>";
+const ICON_CHECK = "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' style='vertical-align:-2px'><polyline points='20 6 9 17 4 12'/></svg>";
+const ICON_DOWNLOAD = "<svg viewBox='0 0 24 24' width='15' height='15' fill='none' stroke='currentColor' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' style='vertical-align:-2px'><path d='M12 3v12'/><polyline points='7 10 12 15 17 10'/><path d='M4 19h16'/></svg>";
+
 function ensureStyles() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    .d5s-split { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-    .d5s-split-left { width: 280px; flex-shrink: 0; border-right: 1px solid var(--border); overflow-y: auto; }
-    .d5s-split-right { flex: 1; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; }
-    .d5s-form { padding: 16px; flex-shrink: 0; }
+    .d5s-page { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    .d5s-footer-bar { flex-shrink: 0; border-top: 1px solid var(--border); background: var(--surface); padding: 14px 16px; }
+    .d5s-form { padding: 0; flex-shrink: 0; }
     .d5s-result-area { flex: 1; min-height: 0; overflow-y: auto; }
     .d5s-box { display: flex; flex-direction: column; }
     .d5s-header {
@@ -110,6 +114,24 @@ function ensureStyles() {
 const FAZ_ETIKET = { seiri: 'Seiri', seiton: 'Seiton', seiso: 'Seiso', seiketsu: 'Seiketsu', shitsuke: 'Shitsuke' };
 const FAZ_SIRA = ['seiri', 'seiton', 'seiso', 'seiketsu', 'shitsuke'];
 
+// ── i18n — sadece bu eski bir core'a (api.t henüz yok) karşı çalışırken
+// bozulmamak için TR güvenlik ağı (AGENTS.md Madde 6 Kural 2). Tek doğruluk
+// kaynağı locale/tr.json + locale/en.json (bkz. core/static/index.html
+// toolSec()). ──
+const T_FALLBACK = {
+  sonuc_placeholder: '// Analiz sonucu burada görünecek', istek_etiket: '// İstek',
+  istek_placeholder: 'Ne yapmak istiyorsun?', istek_varsayilan: 'Belgelerimi düzenle, eski dosyaları arşive at',
+  analiz_et_btn: 'ANALİZ ET', clr_btn: 'CLR', geri_al_btn: 'SON İŞLEMİ GERİ AL',
+  istek_bos_uyari: 'İstek boş — ne yapmak istediğini yaz.', henuz_analiz_yok: 'Henüz bir analiz yapılmadı.',
+  geri_alinacak_yok: 'Bu klasör için geri alınacak işlem bulunamadı.',
+  gecmis_geri_al_onay: '{tarih} tarihli işlemi geri almak istediğinden emin misin?\n({basarili} başarılı, {basarisiz} başarısız işlem)',
+  son_islem_geri_al_onay: 'Son işlemi geri almak istediğinden emin misin?', analiz_sonucu_baslik: '// Analiz Sonucu',
+  toplam_etiket: 'Toplam', oge_birimi: 'ÖĞE', hepsini_sec: 'HEPSİNİ SEÇ', hicbirini_secme: 'HİÇBİRİNİ SEÇME',
+  sadece_gecici_sec: 'SADECE GEÇİCİ DOSYALARI SEÇ', tumu_filtre: 'Tümü', faz_bos: 'BU FAZDA ÖĞE YOK',
+  secili_oge: '<b>{n}</b> / {toplam} öğe seçili', secileni_uygula: 'SEÇİLENİ UYGULA',
+  html_rapor_indir: 'HTML RAPOR İNDİR', en_az_bir_oge: 'En az bir öğe seçilmeli.',
+};
+
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
@@ -128,67 +150,57 @@ function scoreClass(v) {
 export function mount(container, api, toolId) {
   ensureStyles();
 
+  function t(key, vars) {
+    let s = (typeof api.t === 'function') ? api.t(key) : undefined;
+    if (s === undefined || s === null || s === key) s = T_FALLBACK[key] ?? key;
+    if (vars) for (const k in vars) s = s.split(`{${k}}`).join(vars[k]);
+    return s;
+  }
+
   let currentKlasor = '';
 
   container.innerHTML = `
-    <div class="d5s-split">
-      <div class="d5s-split-left">
+    <div class="d5s-page">
+      <div class="d5s-result-area" id="d5sResultArea">
+        <div class="d5s-placeholder">${esc(t('sonuc_placeholder'))}</div>
+      </div>
+      <div class="d5s-footer-bar">
         <div class="d5s-form">
           <div class="field-block">
-            <label class="field-label">// İstek</label>
-            <textarea id="d5sIstek" rows="3"
-              placeholder="Ne yapmak istiyorsun?  —  Örn: Belgelerimi düzenle, eski dosyaları arşive at"></textarea>
-          </div>
-          <div class="field-block">
-            <label class="field-label">// Klasör</label>
-            <div class="folder-row">
-              <input type="text" id="d5sKlasor" placeholder="/data/kullanici/belgeler">
-              <button class="btn-secondary" id="d5sSecBtn" style="border-top:2px solid var(--text-dim)">SEÇ</button>
-            </div>
+            <label class="field-label">${esc(t('istek_etiket'))}</label>
+            <textarea id="d5sIstek" rows="2" placeholder="${esc(t('istek_placeholder'))}">${esc(t('istek_varsayilan'))}</textarea>
           </div>
           <div class="btn-row">
-            <button class="btn-primary" id="d5sAnalizBtn">▶ ANALİZ ET</button>
-            <button class="btn-secondary" id="d5sClrBtn">CLR</button>
+            <button class="btn-primary" id="d5sAnalizBtn">▶ ${esc(t('analiz_et_btn'))}</button>
+            <button class="btn-secondary" id="d5sClrBtn">${esc(t('clr_btn'))}</button>
+            <button class="btn-danger" id="d5sGeriAlBtn">${ICON_UNDO} ${esc(t('geri_al_btn'))}</button>
           </div>
-          <div class="btn-row" style="margin-top:6px">
-            <button class="btn-danger" id="d5sGeriAlBtn" style="width:100%;white-space:normal">↩ SON İŞLEMİ GERİ AL</button>
-          </div>
-        </div>
-      </div>
-      <div class="d5s-split-right">
-        <div class="d5s-result-area" id="d5sResultArea">
-          <div class="d5s-placeholder">// Analiz sonucu burada görünecek</div>
         </div>
       </div>
     </div>
   `;
 
   const istekEl  = container.querySelector('#d5sIstek');
-  const klasorEl = container.querySelector('#d5sKlasor');
   const resultEl = container.querySelector('#d5sResultArea');
-
-  container.querySelector('#d5sSecBtn').onclick = async () => {
-    const path = await api.pickFolder();
-    if (path) klasorEl.value = path;
-  };
 
   container.querySelector('#d5sClrBtn').onclick = () => {
     istekEl.value = '';
-    resultEl.innerHTML = '<div class="d5s-placeholder">// Analiz sonucu burada görünecek</div>';
+    resultEl.innerHTML = `<div class="d5s-placeholder">${esc(t('sonuc_placeholder'))}</div>`;
     api.gizlefeedback();
     api.resetPipeline();
   };
 
   container.querySelector('#d5sAnalizBtn').onclick = async () => {
-    const istek  = istekEl.value.trim();
-    const klasor = klasorEl.value.trim();
-    if (!istek)  { api.gosterfeedback('İstek boş — ne yapmak istediğini yaz.', 'err'); return; }
-    if (!klasor) { api.gosterfeedback('Klasör seçilmedi.', 'err'); return; }
+    const istek = istekEl.value.trim();
+    if (!istek) { api.gosterfeedback(t('istek_bos_uyari'), 'err'); return; }
+
+    const klasor = await api.pickFolder();
+    if (!klasor) return;
     currentKlasor = klasor;
 
     const btn = container.querySelector('#d5sAnalizBtn');
     btn.disabled = true;
-    resultEl.innerHTML = '<div class="d5s-placeholder">// Analiz sonucu burada görünecek</div>';
+    resultEl.innerHTML = `<div class="d5s-placeholder">${esc(t('sonuc_placeholder'))}</div>`;
     try {
       const d = await api.analyze(toolId, { istek, klasor });
       if (d.hata || d.detail) return;
@@ -200,22 +212,22 @@ export function mount(container, api, toolId) {
   };
 
   container.querySelector('#d5sGeriAlBtn').onclick = async () => {
-    const klasor = klasorEl.value.trim() || currentKlasor;
-    if (!klasor) { api.gosterfeedback('Klasör belirtilmemiş.', 'err'); return; }
+    const klasor = currentKlasor;
+    if (!klasor) { api.gosterfeedback(t('henuz_analiz_yok'), 'err'); return; }
 
     let sid = api.lastSessionId();
     if (!sid) {
       const hd = await api.history(klasor, 1);
       if (!hd.oturumlar || hd.oturumlar.length === 0) {
-        api.gosterfeedback('Bu klasör için geri alınacak işlem bulunamadı.', 'err');
+        api.gosterfeedback(t('geri_alinacak_yok'), 'err');
         return;
       }
       const o = hd.oturumlar[0];
       const tarih = o.baslangic ? new Date(o.baslangic).toLocaleString('tr-TR') : '?';
-      if (!confirm(`${tarih} tarihli işlemi geri almak istediğinden emin misin?\n(${o.basarili} başarılı, ${o.basarisiz} başarısız işlem)`)) return;
+      if (!confirm(t('gecmis_geri_al_onay', { tarih, basarili: o.basarili, basarisiz: o.basarisiz }))) return;
       sid = o.session_id;
     } else {
-      if (!confirm('Son işlemi geri almak istediğinden emin misin?')) return;
+      if (!confirm(t('son_islem_geri_al_onay'))) return;
     }
     await api.rollback(toolId, klasor, sid);
   };
@@ -252,7 +264,7 @@ export function mount(container, api, toolId) {
 
     resultEl.innerHTML = `
       <div class="d5s-box">
-        <div class="d5s-header">// Analiz Sonucu</div>
+        <div class="d5s-header">${esc(t('analiz_sonucu_baslik'))}</div>
         <div class="d5s-body">
           <div class="d5s-aciklama">${esc(data.aciklama || '')}</div>
           ${scoreCardHtml(data.score)}
@@ -263,22 +275,22 @@ export function mount(container, api, toolId) {
                 <span class="d5s-ozet-sayi">${o.sayi}</span>
               </div>`).join('')}
           </div>
-          <div class="d5s-ozet-toplam"><span>Toplam</span><span>${data.toplam} ÖĞE</span></div>
+          <div class="d5s-ozet-toplam"><span>${esc(t('toplam_etiket'))}</span><span>${data.toplam} ${esc(t('oge_birimi'))}</span></div>
         </div>
         ${currentItems.length > 0 ? `
           <div class="d5s-body" style="border-top:1px solid var(--border)">
             <div class="d5s-filter-row" id="d5sFilterRow"></div>
             <div class="d5s-bulk-row">
-              <button class="d5s-bulk-btn" data-act="all">HEPSİNİ SEÇ</button>
-              <button class="d5s-bulk-btn" data-act="none">HİÇBİRİNİ SEÇME</button>
-              <button class="d5s-bulk-btn" data-act="gecici">SADECE GEÇİCİ DOSYALARI SEÇ</button>
+              <button class="d5s-bulk-btn" data-act="all">${esc(t('hepsini_sec'))}</button>
+              <button class="d5s-bulk-btn" data-act="none">${esc(t('hicbirini_secme'))}</button>
+              <button class="d5s-bulk-btn" data-act="gecici">${esc(t('sadece_gecici_sec'))}</button>
             </div>
             <div class="d5s-selection-count" id="d5sSelectionCount"></div>
             <div class="d5s-items-wrap" id="d5sItemsTable"></div>
           </div>` : ''}
         <div class="d5s-footer">
-          <button class="btn-primary" id="d5sOnayBtn">✓ SEÇİLENİ UYGULA</button>
-          <button class="btn-secondary" id="d5sRaporBtn">⬇ HTML RAPOR İNDİR</button>
+          <button class="btn-primary" id="d5sOnayBtn">${ICON_CHECK} ${esc(t('secileni_uygula'))}</button>
+          <button class="btn-secondary" id="d5sRaporBtn">${ICON_DOWNLOAD} ${esc(t('html_rapor_indir'))}</button>
         </div>
       </div>
     `;
@@ -287,7 +299,7 @@ export function mount(container, api, toolId) {
       const present = FAZ_SIRA.filter(f => currentItems.some(i => i.phase === f));
       const row = resultEl.querySelector('#d5sFilterRow');
       if (!row) return;
-      const tabs = [{ key: 'all', label: 'Tümü' }, ...present.map(f => ({ key: f, label: FAZ_ETIKET[f] || f }))];
+      const tabs = [{ key: 'all', label: t('tumu_filtre') }, ...present.map(f => ({ key: f, label: FAZ_ETIKET[f] || f }))];
       row.innerHTML = tabs.map(t => `
         <button class="d5s-filter-tab${t.key === activeFilter ? ' active' : ''}" data-filter="${t.key}">${t.label}</button>
       `).join('');
@@ -301,7 +313,7 @@ export function mount(container, api, toolId) {
       if (!wrap) return;
       const items = visibleItems();
       wrap.innerHTML = items.length === 0
-        ? '<div class="d5s-items-empty">BU FAZDA ÖĞE YOK</div>'
+        ? `<div class="d5s-items-empty">${esc(t('faz_bos'))}</div>`
         : items.map(i => `
           <div class="d5s-item-row${selectedIds.has(i.id) ? '' : ' deselected'}">
             <input type="checkbox" data-id="${i.id}" ${selectedIds.has(i.id) ? 'checked' : ''}>
@@ -327,9 +339,9 @@ export function mount(container, api, toolId) {
 
     function updateSelectionCount() {
       const el = resultEl.querySelector('#d5sSelectionCount');
-      if (el) el.innerHTML = `<b>${selectedIds.size}</b> / ${currentItems.length} öğe seçili`;
+      if (el) el.innerHTML = t('secili_oge', { n: selectedIds.size, toplam: currentItems.length });
       const btn = resultEl.querySelector('#d5sOnayBtn');
-      if (btn) { btn.textContent = `✓ SEÇİLENİ UYGULA (${selectedIds.size})`; btn.disabled = selectedIds.size === 0; }
+      if (btn) { btn.innerHTML = `${ICON_CHECK} ${esc(t('secileni_uygula'))} (${selectedIds.size})`; btn.disabled = selectedIds.size === 0; }
     }
 
     if (currentItems.length > 0) {
@@ -353,11 +365,11 @@ export function mount(container, api, toolId) {
 
     resultEl.querySelector('#d5sOnayBtn').onclick = async () => {
       if (currentItems.length > 0 && selectedIds.size === 0) {
-        api.gosterfeedback('En az bir öğe seçilmeli.', 'err');
+        api.gosterfeedback(t('en_az_bir_oge'), 'err');
         return;
       }
       const d = await api.execute(toolId, data.plan_id, currentItems.length > 0 ? Array.from(selectedIds) : null);
-      if (!d.hata) resultEl.innerHTML = '<div class="d5s-placeholder">// Analiz sonucu burada görünecek</div>';
+      if (!d.hata) resultEl.innerHTML = `<div class="d5s-placeholder">${esc(t('sonuc_placeholder'))}</div>`;
     };
 
     resultEl.querySelector('#d5sRaporBtn').onclick = () => api.raporIndir(data.plan_id);
