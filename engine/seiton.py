@@ -26,7 +26,7 @@ TOPIC_MAP: dict[str, list[str]] = {
     "sunumlar":       ["sunum", "presentation", "pptx", "slide"],
     "toplanti":       ["toplanti", "meeting", "gundem", "agenda", "tutanak"],
     "plc":            ["plc", "ladder", "function_block", "grafcet", "scl", "st",
-                       "twincat", "schneider", "rockwell", "siemens", "codesys"],
+                       "twincat", "rockwell", "siemens", "codesys"],
     "cad":            ["dwg", "dxf", "stp", "step", "igs", "iges", "cad", "teknik_resim"],
     "python":         ["python", ".py", "script", "notebook", "jupyter"],
     "musteri":        ["musteri", "customer", "client", "muster"],
